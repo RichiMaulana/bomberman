@@ -33,6 +33,9 @@ or
 | outbound | Outbound IP address for SMTP client |
 | showerror | Print SMTP errors |
 | balance | Tool is use all IP address for outbound ip with sequental balance. Defalut: false |
+| auth-user | The user for SMTP LOGIN authentication. Defalut: empty string |
+| auth-password | The password for SMTP LOGIN authentication. Defalut: empty string |
+| tls | Options to enable TLS connection to the server. Defalut: false |
 
 ## Server Configuration Checklist
 
