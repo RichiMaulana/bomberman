@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -25,11 +27,15 @@ type stats struct {
 	TotalCnt   int
 }
 
+type loginAuth struct {
+	username, password string
+}
+
 var (
 	metric                                                      stats
 	host, from, to, subject, body, helo, authUser, authPassword string
 	workers, count, jobs, size, timeout                         int
-	balance, showerror                                          bool
+	balance, showerror, isTls                                   bool
 	outbound                                                    string
 )
 
@@ -70,6 +76,7 @@ func init() {
 	flag.IntVar(&size, "size", 5, "size=5 (Kilobyte)")
 	flag.BoolVar(&balance, "balance", false, "-balance")
 	flag.BoolVar(&showerror, "showerror", true, "-showerror")
+	flag.BoolVar(&isTls, "tls", false, "-tls")
 	flag.StringVar(&authUser, "auth-user", "", "-user=auth-user")
 	flag.StringVar(&authPassword, "auth-password", "", "-password=auth-password")
 	//TODO: timeout
@@ -181,7 +188,8 @@ func start() {
 				body,
 				helo,
 				authUser,
-				authPassword)
+				authPassword,
+				isTls)
 
 			if err != nil {
 				if showerror {
@@ -202,7 +210,7 @@ func start() {
 
 }
 
-func sendMail(outbound, smtpServer, from, to, subject, body, helo, authUser, authPassword string) (metric map[string]time.Duration, remoteip string, err error) {
+func sendMail(outbound, smtpServer, from, to, subject, body, helo, authUser, authPassword string, isTls bool) (metric map[string]time.Duration, remoteip string, err error) {
 
 	var wc io.WriteCloser
 	var msg string
@@ -246,9 +254,25 @@ func sendMail(outbound, smtpServer, from, to, subject, body, helo, authUser, aut
 
 	metric["HELO"] = time.Now().Sub(helloTime)
 
+	if isTls {
+		tlsConfig := tls.Config{
+			InsecureSkipVerify: false,
+			ServerName:         host,
+		}
+		tlsTime := time.Now()
+		err = c.StartTLS(&tlsConfig)
+		if err != nil {
+			err = fmt.Errorf("STARTTLS: %v", err)
+			metric["STARTTLS"] = time.Since(tlsTime)
+			return
+		}
+		metric["STARTTLS"] = time.Since(tlsTime)
+	}
+
 	if authUser != "" && authPassword != "" {
 		authTime := time.Now()
-		err = c.Auth(smtp.CRAMMD5Auth(authUser, authPassword))
+		// err = c.Auth(smtp.CRAMMD5Auth(authUser, authPassword))
+		err = c.Auth(LoginAuth(authUser, authPassword))
 
 		if err != nil {
 			err = fmt.Errorf("AUTH: %v", err)
@@ -503,4 +527,26 @@ func createBodyFixedSize(n int) string {
 	}
 
 	return string(b)
+}
+
+func LoginAuth(username, password string) smtp.Auth {
+	return &loginAuth{username, password}
+}
+
+func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	return "LOGIN", []byte{}, nil
+}
+
+func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if more {
+		switch string(fromServer) {
+		case "Username:":
+			return []byte(a.username), nil
+		case "Password:":
+			return []byte(a.password), nil
+		default:
+			return nil, errors.New("Unkown fromServer")
+		}
+	}
+	return nil, nil
 }
