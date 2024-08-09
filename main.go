@@ -26,11 +26,11 @@ type stats struct {
 }
 
 var (
-	metric                              stats
-	host, from, to, subject, body, helo string
-	workers, count, jobs, size, timeout int
-	balance, showerror                  bool
-	outbound                            string
+	metric                                                      stats
+	host, from, to, subject, body, helo, authUser, authPassword string
+	workers, count, jobs, size, timeout                         int
+	balance, showerror                                          bool
+	outbound                                                    string
 )
 
 const (
@@ -70,6 +70,8 @@ func init() {
 	flag.IntVar(&size, "size", 5, "size=5 (Kilobyte)")
 	flag.BoolVar(&balance, "balance", false, "-balance")
 	flag.BoolVar(&showerror, "showerror", true, "-showerror")
+	flag.StringVar(&authUser, "auth-user", "", "-user=auth-user")
+	flag.StringVar(&authPassword, "auth-password", "", "-password=auth-password")
 	//TODO: timeout
 
 	flag.Usage = usage
@@ -177,7 +179,9 @@ func start() {
 				to,
 				subject,
 				body,
-				helo)
+				helo,
+				authUser,
+				authPassword)
 
 			if err != nil {
 				if showerror {
@@ -198,7 +202,7 @@ func start() {
 
 }
 
-func sendMail(outbound, smtpServer, from, to, subject, body, helo string) (metric map[string]time.Duration, remoteip string, err error) {
+func sendMail(outbound, smtpServer, from, to, subject, body, helo, authUser, authPassword string) (metric map[string]time.Duration, remoteip string, err error) {
 
 	var wc io.WriteCloser
 	var msg string
@@ -211,7 +215,7 @@ func sendMail(outbound, smtpServer, from, to, subject, body, helo string) (metri
 
 	if err != nil {
 		err = fmt.Errorf("DIAL: %v (out:%s)", err, outbound)
-		metric["DIAL"] = time.Now().Sub(startTime)
+		metric["DIAL"] = time.Since(startTime)
 		return
 	}
 
@@ -241,6 +245,19 @@ func sendMail(outbound, smtpServer, from, to, subject, body, helo string) (metri
 	}
 
 	metric["HELO"] = time.Now().Sub(helloTime)
+
+	if authUser != "" && authPassword != "" {
+		authTime := time.Now()
+		err = c.Auth(smtp.CRAMMD5Auth(authUser, authPassword))
+
+		if err != nil {
+			err = fmt.Errorf("AUTH: %v", err)
+			metric["AUTH"] = time.Since(authTime)
+			return
+		}
+
+		metric["AUTH"] = time.Since(authTime)
+	}
 
 	mailTime := time.Now()
 	err = c.Mail(from)
