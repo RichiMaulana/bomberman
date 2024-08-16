@@ -35,7 +35,7 @@ var (
 	metric                                                      stats
 	host, from, to, subject, body, helo, authUser, authPassword string
 	workers, count, jobs, size, timeout                         int
-	balance, showerror, isTls                                   bool
+	balance, showerror, isTls, ignoreSSL                        bool
 	outbound                                                    string
 )
 
@@ -76,7 +76,8 @@ func init() {
 	flag.IntVar(&size, "size", 5, "size=5 (Kilobyte)")
 	flag.BoolVar(&balance, "balance", false, "-balance")
 	flag.BoolVar(&showerror, "showerror", true, "-showerror")
-	flag.BoolVar(&isTls, "tls", false, "-tls")
+	flag.BoolVar(&isTls, "tls", false, "-tls (default false)")
+	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "-ignore-ssl (default false)")
 	flag.StringVar(&authUser, "auth-user", "", "-user=auth-user")
 	flag.StringVar(&authPassword, "auth-password", "", "-password=auth-password")
 	//TODO: timeout
@@ -189,7 +190,9 @@ func start() {
 				helo,
 				authUser,
 				authPassword,
-				isTls)
+				isTls,
+				ignoreSSL,
+			)
 
 			if err != nil {
 				if showerror {
@@ -210,7 +213,7 @@ func start() {
 
 }
 
-func sendMail(outbound, smtpServer, from, to, subject, body, helo, authUser, authPassword string, isTls bool) (metric map[string]time.Duration, remoteip string, err error) {
+func sendMail(outbound, smtpServer, from, to, subject, body, helo, authUser, authPassword string, isTls, ignoreSSL bool) (metric map[string]time.Duration, remoteip string, err error) {
 
 	var wc io.WriteCloser
 	var msg string
@@ -256,7 +259,7 @@ func sendMail(outbound, smtpServer, from, to, subject, body, helo, authUser, aut
 
 	if isTls {
 		tlsConfig := tls.Config{
-			InsecureSkipVerify: false,
+			InsecureSkipVerify: ignoreSSL,
 			ServerName:         host,
 		}
 		tlsTime := time.Now()
